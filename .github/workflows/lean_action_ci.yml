@@ -7,7 +7,38 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libpq (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev
+      - name: Install libpq (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libpq
+      - uses: leanprover/lean-action@v1
+
+  test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -15,4 +46,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev
+      - name: Seed test database
+        run: PGPASSWORD=test psql -h localhost -U postgres -f Tests/init.sql
       - uses: leanprover/lean-action@v1
+        with:
+          test: true

@@ -1,16 +1,25 @@
 import Lake
 open System Lake DSL
 
+-- Phase 2a: Unified linking strategy — try pkg-config first (works on Alpine, Arch, Fedora, NixOS),
+-- fall back to ldconfig, then plain -lpq
 def linkArgsLinux : IO (Array String) := do
-  let p ← IO.Process.run { cmd := "/bin/sh", args := #["-c", "ldconfig -p | grep -m 1 libpq | awk '{ print $4 }'"]}
-  pure (if p.trim.isEmpty then #["-lpq"] else #[p.trim])
+  try
+    let output ← IO.Process.run { cmd := "pkg-config", args := #["--libs", "libpq"] }
+    if !output.trimAscii.toString.isEmpty then return output.trimAscii.toString.splitOn.toArray
+  catch _ => pure ()
+  try
+    let p ← IO.Process.run { cmd := "/bin/sh", args := #["-c", "ldconfig -p | grep -m 1 libpq | awk '{ print $4 }'"]}
+    if !p.trimAscii.toString.isEmpty then return #[p.trimAscii.toString]
+  catch _ => pure ()
+  return #["-lpq"]
 
 def linkArgsDarwin : IO (Array String) := do
   let output ← IO.Process.run {
     cmd := "pkg-config"
     args := #["--libs", "libpq"]
   }
-  return output.dropRight 1 |>.splitOn.toArray
+  return output.dropEnd 1 |>.toString |>.splitOn.toArray
 
 def linkArgs : Array String := run_io do
   if System.Platform.isOSX then
@@ -45,7 +54,7 @@ def traceArgs : FetchM (Array String) := do
     args := #["--cflags", "libpq"]
   }
   logInfo s!"traceArgs: {output}"
-  return (output.dropRight 1 |>.splitOn.toArray)
+  return (output.dropEnd 1 |>.toString |>.splitOn.toArray)
 
 target extern_o pkg : FilePath := do
   let LeanPq_extern_c := pkg.dir / "LeanPq" / "extern.c"

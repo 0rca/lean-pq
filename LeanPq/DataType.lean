@@ -351,3 +351,112 @@ inductive DataType where
 
   | unknown : DataType
     -- identifies a not-yet-resolved type
+  deriving Inhabited, Repr
+
+-- Manual BEq instance since DataType is recursive (array, composite)
+mutual
+  def DataType.beq : DataType → DataType → Bool
+    | .smallint, .smallint => true
+    | .integer, .integer => true
+    | .bigint, .bigint => true
+    | .numeric p1 s1, .numeric p2 s2 => p1 == p2 && s1 == s2
+    | .real, .real => true
+    | .double_precision, .double_precision => true
+    | .smallserial, .smallserial => true
+    | .serial, .serial => true
+    | .bigserial, .bigserial => true
+    | .money, .money => true
+    | .character n1, .character n2 => n1 == n2
+    | .character_varying n1, .character_varying n2 => n1 == n2
+    | .text, .text => true
+    | .bytea, .bytea => true
+    | .date, .date => true
+    | .time p1 tz1, .time p2 tz2 => p1 == p2 && tz1 == tz2
+    | .timestamp p1 tz1, .timestamp p2 tz2 => p1 == p2 && tz1 == tz2
+    | .interval f1 p1, .interval f2 p2 => f1 == f2 && p1 == p2
+    | .boolean, .boolean => true
+    | .enum n1, .enum n2 => n1 == n2
+    | .point, .point => true
+    | .line, .line => true
+    | .lseg, .lseg => true
+    | .box, .box => true
+    | .path, .path => true
+    | .polygon, .polygon => true
+    | .circle, .circle => true
+    | .inet, .inet => true
+    | .cidr, .cidr => true
+    | .macaddr, .macaddr => true
+    | .macaddr8, .macaddr8 => true
+    | .bit n1, .bit n2 => n1 == n2
+    | .bit_varying n1, .bit_varying n2 => n1 == n2
+    | .tsvector, .tsvector => true
+    | .tsquery, .tsquery => true
+    | .uuid, .uuid => true
+    | .xml, .xml => true
+    | .json, .json => true
+    | .jsonb, .jsonb => true
+    | .array e1 n1, .array e2 n2 => DataType.beq e1 e2 && n1 == n2
+    | .composite n1 fs1, .composite n2 fs2 => n1 == n2 && DataType.fieldsBeq fs1 fs2
+    | .int4range, .int4range => true
+    | .int8range, .int8range => true
+    | .numrange, .numrange => true
+    | .tsrange, .tsrange => true
+    | .tstzrange, .tstzrange => true
+    | .daterange, .daterange => true
+    | .int4multirange, .int4multirange => true
+    | .int8multirange, .int8multirange => true
+    | .nummultirange, .nummultirange => true
+    | .tsmultirange, .tsmultirange => true
+    | .tstzmultirange, .tstzmultirange => true
+    | .datemultirange, .datemultirange => true
+    | .domain n1, .domain n2 => n1 == n2
+    | .oid, .oid => true
+    | .regclass, .regclass => true
+    | .regcollation, .regcollation => true
+    | .regconfig, .regconfig => true
+    | .regdictionary, .regdictionary => true
+    | .regnamespace, .regnamespace => true
+    | .regoper, .regoper => true
+    | .regoperator, .regoperator => true
+    | .regproc, .regproc => true
+    | .regprocedure, .regprocedure => true
+    | .regrole, .regrole => true
+    | .regtype, .regtype => true
+    | .pg_lsn, .pg_lsn => true
+    | .pg_snapshot, .pg_snapshot => true
+    | .txid_snapshot, .txid_snapshot => true
+    | .any, .any => true
+    | .anyelement, .anyelement => true
+    | .anyarray, .anyarray => true
+    | .anynonarray, .anynonarray => true
+    | .anyenum, .anyenum => true
+    | .anyrange, .anyrange => true
+    | .anymultirange, .anymultirange => true
+    | .anycompatible, .anycompatible => true
+    | .anycompatiblearray, .anycompatiblearray => true
+    | .anycompatiblenonarray, .anycompatiblenonarray => true
+    | .anycompatiblerange, .anycompatiblerange => true
+    | .anycompatiblemultirange, .anycompatiblemultirange => true
+    | .cstring, .cstring => true
+    | .internal, .internal => true
+    | .language_handler, .language_handler => true
+    | .fdw_handler, .fdw_handler => true
+    | .table_am_handler, .table_am_handler => true
+    | .index_am_handler, .index_am_handler => true
+    | .tsm_handler, .tsm_handler => true
+    | .record, .record => true
+    | .trigger, .trigger => true
+    | .event_trigger, .event_trigger => true
+    | .pg_ddl_command, .pg_ddl_command => true
+    | .void, .void => true
+    | .unknown, .unknown => true
+    | _, _ => false
+
+  def DataType.fieldsBeq : List (String × DataType) → List (String × DataType) → Bool
+    | [], [] => true
+    | (n1, t1) :: rest1, (n2, t2) :: rest2 => n1 == n2 && DataType.beq t1 t2 && DataType.fieldsBeq rest1 rest2
+    | _, _ => false
+end
+
+instance : BEq DataType where
+  beq := DataType.beq

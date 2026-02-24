@@ -59,14 +59,14 @@ static void initialize_pq_connection_external_class() {
 
 static lean_object* pq_connection_error(const uint32_t code) {
   lean_object* code_obj = lean_box_uint32(code);
-  lean_object* connect_err = lean_alloc_ctor(0, 1, 0); // IOError constructor
+  lean_object* connect_err = lean_alloc_ctor(0, 1, 0); // connectionError constructor
   lean_ctor_set(connect_err, 0, code_obj);
   return connect_err;
 }
 
 static lean_object* pq_other_error(const char* msg) {
   lean_object* msg_obj = lean_mk_string(msg);
-  lean_object* other_err = lean_alloc_ctor(1, 1, 0); // IOError constructor
+  lean_object* other_err = lean_alloc_ctor(1, 1, 0); // otherError constructor
   lean_ctor_set(other_err, 0, msg_obj);
   return other_err;
 }
@@ -117,7 +117,7 @@ LEAN_EXPORT lean_obj_res lean_pq_connect_db(b_lean_obj_arg conninfo) {
     return lean_io_result_mk_error(pq_connection_error((uint32_t)status));
   Connection *connection = (Connection *)malloc(sizeof *connection); // Allocate our wrapper
   if (!connection)
-    return lean_io_result_mk_error(lean_box(LEAN_PQ_CONNECTION_FAILED_INIT));
+    return lean_io_result_mk_error(pq_other_error("Memory allocation for connection failed"));
   // Initialize all fields to safe defaults
   connection->pg_conn = pg_conn;
 #if DEBUG
@@ -136,69 +136,23 @@ LEAN_EXPORT lean_obj_res lean_pq_reset(b_lean_obj_arg conn) {
 
 // [Connection Status Functions](https://www.postgresql.org/docs/current/libpq-status.html)
 
-// PQdb - Returns the database name of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQDB
-LEAN_EXPORT lean_obj_res lean_pq_db(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * db = PQdb(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(db));
-}
+// Phase 0a: Macro for connection string getter functions
+// 8 functions share the same 4-line body pattern
+#define LEAN_PQ_CONN_STRING_GETTER(lean_name, pq_func) \
+  LEAN_EXPORT lean_obj_res lean_name(b_lean_obj_arg conn) { \
+    Connection *connection = pq_connection_get_handle(conn); \
+    const char *val = pq_func(connection->pg_conn); \
+    return lean_io_result_mk_ok(lean_mk_string(val)); \
+  }
 
-// PQuser - Returns the user name of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQUSER
-LEAN_EXPORT lean_obj_res lean_pq_user(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * user = PQuser(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(user));
-}
-
-// PQpass - Returns the password of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPASS
-LEAN_EXPORT lean_obj_res lean_pq_pass(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * pass = PQpass(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(pass));
-}
-
-// PQhost - Returns the server host name of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQHOST
-LEAN_EXPORT lean_obj_res lean_pq_host(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * host = PQhost(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(host));
-}
-
-// PQhostaddr - Returns the server IP address of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQHOSTADDR
-LEAN_EXPORT lean_obj_res lean_pq_host_addr(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * host = PQhostaddr(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(host));
-}
-
-// PQport - Returns the port of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPORT
-LEAN_EXPORT lean_obj_res lean_pq_port(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * port = PQport(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(port));
-}
-
-// PQtty - Returns the debug tty of the connection
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQTTY
-LEAN_EXPORT lean_obj_res lean_pq_tty(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * tty = PQtty(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(tty));
-}
-
-// PQoptions - Returns the command-line options passed in the connection request
-// Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQOPTIONS
-LEAN_EXPORT lean_obj_res lean_pq_options(b_lean_obj_arg conn) {
-  Connection *connection = pq_connection_get_handle(conn);
-  const char * options = PQoptions(connection->pg_conn);
-  return lean_io_result_mk_ok(lean_mk_string(options));
-}
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_db, PQdb)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_user, PQuser)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_pass, PQpass)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_host, PQhost)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_host_addr, PQhostaddr)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_port, PQport)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_tty, PQtty)
+LEAN_PQ_CONN_STRING_GETTER(lean_pq_options, PQoptions)
 
 // PQstatus - Returns the status of the connection
 // Documentation: https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQSTATUS
@@ -301,17 +255,10 @@ static void initialize_pq_result_external_class() {
   }
 }
 
-// PQexec - Submits a command to the server and waits for the result
-// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXEC
-LEAN_EXPORT lean_obj_res lean_pq_exec(b_lean_obj_arg conn, b_lean_obj_arg cmd) {
-  // Initialize the external class for results
+// Phase 0a: Helper to wrap a PGresult into a Lean external object
+// Avoids repeating the malloc/check/wrap pattern in every exec function
+static lean_obj_res wrap_pg_result(PGresult *pg_result) {
   initialize_pq_result_external_class();
-  // Get the connection handle
-  Connection *connection = pq_connection_get_handle(conn);
-  // Convert the command to a C string
-  const char * cmd_cstr = lean_string_cstr(cmd);
-  // Execute the command
-  PGresult * pg_result = PQexec(connection->pg_conn, cmd_cstr);
   Result *result = (Result *)malloc(sizeof *result);
   if (!result)
     return lean_io_result_mk_error(pq_other_error("Memory allocation for result failed"));
@@ -319,12 +266,22 @@ LEAN_EXPORT lean_obj_res lean_pq_exec(b_lean_obj_arg conn, b_lean_obj_arg cmd) {
 #if DEBUG
   fprintf(stderr, "Result %p\n", pg_result);
 #endif
-  // Return the result
   return lean_io_result_mk_ok(pq_result_wrap_handle(result));
+}
+
+// PQexec - Submits a command to the server and waits for the result
+// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXEC
+LEAN_EXPORT lean_obj_res lean_pq_exec(b_lean_obj_arg conn, b_lean_obj_arg cmd) {
+  Connection *connection = pq_connection_get_handle(conn);
+  const char * cmd_cstr = lean_string_cstr(cmd);
+  PGresult * pg_result = PQexec(connection->pg_conn, cmd_cstr);
+  return wrap_pg_result(pg_result);
 }
 
 // PQexecParams - Submits a command to the server and waits for the result, with the ability to pass parameters separately
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXECPARAMS
+//
+// Phase 1a: Fixed array marshalling — uses lean_array_uget iteration instead of broken lean_unbox casts
 LEAN_EXPORT lean_obj_res lean_pq_exec_params(
   b_lean_obj_arg conn,
   b_lean_obj_arg cmd,
@@ -334,69 +291,154 @@ LEAN_EXPORT lean_obj_res lean_pq_exec_params(
   b_lean_obj_arg paramLengths,
   b_lean_obj_arg paramFormats,
   b_lean_obj_arg resultFormat) {
-  // Initialize the external class for results
-  initialize_pq_result_external_class();
-  // Get the connection handle
   Connection *connection = pq_connection_get_handle(conn);
   const char * cmd_cstr = lean_string_cstr(cmd);
   int nParams_int = lean_unbox(nParams);
-  const Oid * paramTypes_oid = (const Oid *)lean_unbox(paramTypes);
-  const char * const * paramValues_cstr_array = (const char **)lean_unbox(paramValues);
-  const int * paramLengths_int = (const int *)lean_unbox(paramLengths);
-  const int * paramFormats_int = (const int *)lean_unbox(paramFormats);
   int resultFormat_int = lean_unbox(resultFormat);
-  PGresult * pg_result = PQexecParams(connection->pg_conn, cmd_cstr, nParams_int, paramTypes_oid, paramValues_cstr_array, paramLengths_int, paramFormats_int, resultFormat_int);
-  Result *result = (Result *)malloc(sizeof *result);
-  if (!result)
-    return lean_io_result_mk_error(pq_other_error("Memory allocation for result failed"));
-  result->pg_result = pg_result;
-#if DEBUG
-  fprintf(stderr, "Result %p\n", pg_result);
-#endif
-  // Return the result
-  return lean_io_result_mk_ok(pq_result_wrap_handle(result));
+
+  // Marshal paramTypes: Array UInt32 -> Oid*
+  Oid *paramTypes_c = NULL;
+  if (nParams_int > 0) {
+    paramTypes_c = (Oid *)malloc(nParams_int * sizeof(Oid));
+    if (!paramTypes_c)
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramTypes failed"));
+    for (int i = 0; i < nParams_int; i++) {
+      paramTypes_c[i] = (Oid)lean_unbox_uint32(lean_array_uget(paramTypes, (size_t)i));
+    }
+  }
+
+  // Marshal paramValues: Array String -> const char**
+  const char **paramValues_c = NULL;
+  if (nParams_int > 0) {
+    paramValues_c = (const char **)malloc(nParams_int * sizeof(const char *));
+    if (!paramValues_c) {
+      free(paramTypes_c);
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramValues failed"));
+    }
+    for (int i = 0; i < nParams_int; i++) {
+      paramValues_c[i] = lean_string_cstr(lean_array_uget(paramValues, (size_t)i));
+    }
+  }
+
+  // Marshal paramLengths: Array Int -> int*
+  int *paramLengths_c = NULL;
+  if (nParams_int > 0) {
+    paramLengths_c = (int *)malloc(nParams_int * sizeof(int));
+    if (!paramLengths_c) {
+      free(paramTypes_c); free(paramValues_c);
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramLengths failed"));
+    }
+    for (int i = 0; i < nParams_int; i++) {
+      paramLengths_c[i] = (int)lean_unbox(lean_array_uget(paramLengths, (size_t)i));
+    }
+  }
+
+  // Marshal paramFormats: Array Int -> int*
+  int *paramFormats_c = NULL;
+  if (nParams_int > 0) {
+    paramFormats_c = (int *)malloc(nParams_int * sizeof(int));
+    if (!paramFormats_c) {
+      free(paramTypes_c); free(paramValues_c); free(paramLengths_c);
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramFormats failed"));
+    }
+    for (int i = 0; i < nParams_int; i++) {
+      paramFormats_c[i] = (int)lean_unbox(lean_array_uget(paramFormats, (size_t)i));
+    }
+  }
+
+  PGresult * pg_result = PQexecParams(connection->pg_conn, cmd_cstr, nParams_int,
+    paramTypes_c, paramValues_c, paramLengths_c, paramFormats_c, resultFormat_int);
+
+  free(paramTypes_c);
+  free(paramValues_c);
+  free(paramLengths_c);
+  free(paramFormats_c);
+
+  return wrap_pg_result(pg_result);
 }
 
 // PQprepare - Submits a request to create a prepared statement with the given parameters
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQPREPARE
+//
+// Phase 1a: Fixed array marshalling for paramTypes
 LEAN_EXPORT lean_obj_res lean_pq_prepare(b_lean_obj_arg conn, b_lean_obj_arg stmtName, b_lean_obj_arg query, b_lean_obj_arg nParams, b_lean_obj_arg paramTypes) {
   Connection *connection = pq_connection_get_handle(conn);
   const char * stmtName_cstr = lean_string_cstr(stmtName);
   const char * query_cstr = lean_string_cstr(query);
   const int nParams_int = lean_unbox(nParams);
-  const Oid * paramTypes_oid = (const Oid *)lean_unbox(paramTypes);
-  PGresult * pg_result = PQprepare(connection->pg_conn, stmtName_cstr, query_cstr, nParams_int, paramTypes_oid);
-  Result *result = (Result *)malloc(sizeof *result);
-  if (!result)
-    return lean_io_result_mk_error(pq_other_error("Memory allocation for result failed"));
-  result->pg_result = pg_result;
-#if DEBUG
-  fprintf(stderr, "Result %p\n", pg_result);
-#endif
-  // Return the result
-  return lean_io_result_mk_ok(pq_result_wrap_handle(result));
+
+  // Marshal paramTypes: Array UInt32 -> Oid*
+  Oid *paramTypes_c = NULL;
+  if (nParams_int > 0) {
+    paramTypes_c = (Oid *)malloc(nParams_int * sizeof(Oid));
+    if (!paramTypes_c)
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramTypes failed"));
+    for (int i = 0; i < nParams_int; i++) {
+      paramTypes_c[i] = (Oid)lean_unbox_uint32(lean_array_uget(paramTypes, (size_t)i));
+    }
+  }
+
+  PGresult * pg_result = PQprepare(connection->pg_conn, stmtName_cstr, query_cstr, nParams_int, paramTypes_c);
+  free(paramTypes_c);
+
+  return wrap_pg_result(pg_result);
 }
 
 // PQexecPrepared - Sends a request to execute a prepared statement with given parameters
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXECPREPARED
+//
+// Phase 1a: Fixed array marshalling for paramValues, paramLengths, paramFormats
 LEAN_EXPORT lean_obj_res lean_pq_exec_prepared(b_lean_obj_arg conn, b_lean_obj_arg stmtName, b_lean_obj_arg nParams, b_lean_obj_arg paramValues, b_lean_obj_arg paramLengths, b_lean_obj_arg paramFormats, b_lean_obj_arg resultFormat) {
   Connection *connection = pq_connection_get_handle(conn);
   const char * stmtName_cstr = lean_string_cstr(stmtName);
   const int nParams_int = lean_unbox(nParams);
-  const char * const * paramValues_cstr_array = (const char **)lean_unbox(paramValues);
-  const int * paramLengths_int = (const int *)lean_unbox(paramLengths);
-  const int * paramFormats_int = (const int *)lean_unbox(paramFormats);
   int resultFormat_int = lean_unbox(resultFormat);
-  PGresult * pg_result = PQexecPrepared(connection->pg_conn, stmtName_cstr, nParams_int, paramValues_cstr_array, paramLengths_int, paramFormats_int, resultFormat_int);
-  Result *result = (Result *)malloc(sizeof *result);
-  if (!result)
-    return lean_io_result_mk_error(pq_other_error("Memory allocation for result failed"));
-  result->pg_result = pg_result;
-#if DEBUG
-  fprintf(stderr, "Result %p\n", pg_result);
-#endif
-  // Return the result
-  return lean_io_result_mk_ok(pq_result_wrap_handle(result));
+
+  // Marshal paramValues: Array String -> const char**
+  const char **paramValues_c = NULL;
+  if (nParams_int > 0) {
+    paramValues_c = (const char **)malloc(nParams_int * sizeof(const char *));
+    if (!paramValues_c)
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramValues failed"));
+    for (int i = 0; i < nParams_int; i++) {
+      paramValues_c[i] = lean_string_cstr(lean_array_uget(paramValues, (size_t)i));
+    }
+  }
+
+  // Marshal paramLengths: Array Int -> int*
+  int *paramLengths_c = NULL;
+  if (nParams_int > 0) {
+    paramLengths_c = (int *)malloc(nParams_int * sizeof(int));
+    if (!paramLengths_c) {
+      free(paramValues_c);
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramLengths failed"));
+    }
+    for (int i = 0; i < nParams_int; i++) {
+      paramLengths_c[i] = (int)lean_unbox(lean_array_uget(paramLengths, (size_t)i));
+    }
+  }
+
+  // Marshal paramFormats: Array Int -> int*
+  int *paramFormats_c = NULL;
+  if (nParams_int > 0) {
+    paramFormats_c = (int *)malloc(nParams_int * sizeof(int));
+    if (!paramFormats_c) {
+      free(paramValues_c); free(paramLengths_c);
+      return lean_io_result_mk_error(pq_other_error("Memory allocation for paramFormats failed"));
+    }
+    for (int i = 0; i < nParams_int; i++) {
+      paramFormats_c[i] = (int)lean_unbox(lean_array_uget(paramFormats, (size_t)i));
+    }
+  }
+
+  PGresult * pg_result = PQexecPrepared(connection->pg_conn, stmtName_cstr, nParams_int,
+    paramValues_c, paramLengths_c, paramFormats_c, resultFormat_int);
+
+  free(paramValues_c);
+  free(paramLengths_c);
+  free(paramFormats_c);
+
+  return wrap_pg_result(pg_result);
 }
 
 // [Result Functions](https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-EXEC-SELECT-INFO)
@@ -413,11 +455,13 @@ LEAN_EXPORT lean_obj_res lean_pq_result_status(b_lean_obj_arg res) {
 
 // PQresStatus - Converts the enumerated type returned by PQresultStatus into a string constant
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQRESSTATUS
+//
+// Phase 0b: Fixed — was identical to lean_pq_result_status. Now correctly calls PQresStatus.
 LEAN_EXPORT lean_obj_res lean_pq_res_status(b_lean_obj_arg res) {
   Result *result = pq_result_get_handle(res);
   ExecStatusType status = PQresultStatus(result->pg_result);
-  lean_object * status_boxed = lean_box_uint32((uint32_t)status);
-  return lean_io_result_mk_ok(status_boxed);
+  const char *status_str = PQresStatus(status);
+  return lean_io_result_mk_ok(lean_mk_string(status_str));
 }
 
 // PQresultErrorMessage - Returns the error message associated with the command
@@ -472,60 +516,46 @@ LEAN_EXPORT lean_obj_res lean_pq_fnumber(b_lean_obj_arg res, b_lean_obj_arg fiel
   return lean_io_result_mk_ok(lean_box(fnumber));
 }
 
+// Phase 0a: Macro for result-with-field-num getters that return int
+#define LEAN_PQ_RESULT_INT_FIELD(lean_name, pq_func) \
+  LEAN_EXPORT lean_obj_res lean_name(b_lean_obj_arg res, b_lean_obj_arg field_num) { \
+    Result *result = pq_result_get_handle(res); \
+    int field_num_int = lean_unbox(field_num); \
+    return lean_io_result_mk_ok(lean_box(pq_func(result->pg_result, field_num_int))); \
+  }
+
+// PQftablecol - Returns the column number (within its table) of the column making up the specified query result column
+LEAN_PQ_RESULT_INT_FIELD(lean_pq_ftablecol, PQftablecol)
+
+// PQfformat - Returns the format code indicating the format of the given column
+LEAN_PQ_RESULT_INT_FIELD(lean_pq_fformat, PQfformat)
+
+// PQfsize - Returns the size in bytes of the type associated with the given column number
+LEAN_PQ_RESULT_INT_FIELD(lean_pq_fsize, PQfsize)
+
+// PQfmod - Returns the type modifier of the type associated with the given column number
+LEAN_PQ_RESULT_INT_FIELD(lean_pq_fmod, PQfmod)
+
 // PQftable - Returns the OID of the table from which the given column was fetched
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTABLE
+// Phase 1b: Changed from lean_box_usize to lean_box_uint32 — OIDs are 32-bit
 LEAN_EXPORT lean_obj_res lean_pq_ftable(b_lean_obj_arg res, b_lean_obj_arg field_num) {
   Result *result = pq_result_get_handle(res);
   int field_num_int = lean_unbox(field_num);
   Oid ftable = PQftable(result->pg_result, field_num_int);
-  lean_object * ftable_obj = lean_box_usize((size_t)ftable);
+  lean_object * ftable_obj = lean_box_uint32((uint32_t)ftable);
   return lean_io_result_mk_ok(ftable_obj);
-}
-
-// PQftablecol - Returns the column number (within its table) of the column making up the specified query result column
-// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTABLECOL
-LEAN_EXPORT lean_obj_res lean_pq_ftablecol(b_lean_obj_arg res, b_lean_obj_arg field_num) {
-  Result *result = pq_result_get_handle(res);
-  int field_num_int = lean_unbox(field_num);
-  int ftablecol = PQftablecol(result->pg_result, field_num_int);
-  return lean_io_result_mk_ok(lean_box(ftablecol));
-}
-
-// PQfformat - Returns the format code indicating the format of the given column
-// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFFORMAT
-LEAN_EXPORT lean_obj_res lean_pq_fformat(b_lean_obj_arg res, b_lean_obj_arg field_num) {
-  Result *result = pq_result_get_handle(res);
-  int field_num_int = lean_unbox(field_num);
-  int fformat = PQfformat(result->pg_result, field_num_int);
-  return lean_io_result_mk_ok(lean_box(fformat));
 }
 
 // PQftype - Returns the data type associated with the given column number
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTYPE
+// Phase 1b: Changed from lean_box_usize to lean_box_uint32 — OIDs are 32-bit
 LEAN_EXPORT lean_obj_res lean_pq_ftype(b_lean_obj_arg res, b_lean_obj_arg field_num) {
   Result *result = pq_result_get_handle(res);
   int field_num_int = lean_unbox(field_num);
   Oid ftype = PQftype(result->pg_result, field_num_int);
-  lean_object * ftype_obj = lean_box_usize((size_t)ftype);
+  lean_object * ftype_obj = lean_box_uint32((uint32_t)ftype);
   return lean_io_result_mk_ok(ftype_obj);
-}
-
-// PQfsize - Returns the size in bytes of the type associated with the given column number
-// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFSIZE
-LEAN_EXPORT lean_obj_res lean_pq_fsize(b_lean_obj_arg res, b_lean_obj_arg field_num) {
-  Result *result = pq_result_get_handle(res);
-  int field_num_int = lean_unbox(field_num);
-  int fsize = PQfsize(result->pg_result, field_num_int);
-  return lean_io_result_mk_ok(lean_box(fsize));
-}
-
-// PQfmod - Returns the type modifier of the type associated with the given column number
-// Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFMOD
-LEAN_EXPORT lean_obj_res lean_pq_fmod(b_lean_obj_arg res, b_lean_obj_arg field_num) {
-  Result *result = pq_result_get_handle(res);
-  int field_num_int = lean_unbox(field_num);
-  int fmod = PQfmod(result->pg_result, field_num_int);
-  return lean_io_result_mk_ok(lean_box(fmod));
 }
 
 // PQbinaryTuples - Returns 1 if the PGresult contains binary tuple data, 0 if it contains text data
@@ -555,10 +585,11 @@ LEAN_EXPORT lean_obj_res lean_pq_cmd_tuples(b_lean_obj_arg res) {
 
 // PQoidValue - Returns the OID of the inserted row, if the SQL command was an INSERT that inserted exactly one row into a table that has OIDs
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQOIDVALUE
+// Phase 1b: Changed from lean_box_usize to lean_box_uint32 — OIDs are 32-bit
 LEAN_EXPORT lean_obj_res lean_pq_oid_value(b_lean_obj_arg res) {
   Result *result = pq_result_get_handle(res);
   Oid oid_value = PQoidValue(result->pg_result);
-  lean_object * oid_value_obj = lean_box_usize((size_t)oid_value);
+  lean_object * oid_value_obj = lean_box_uint32((uint32_t)oid_value);
   return lean_io_result_mk_ok(oid_value_obj);
 }
 
@@ -611,11 +642,12 @@ LEAN_EXPORT lean_obj_res lean_pq_nparams(b_lean_obj_arg res) {
 
 // PQparamtype - Returns the data type of the indicated statement parameter
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQPARAMTYPE
+// Phase 1b: Changed from lean_box_usize to lean_box_uint32 — OIDs are 32-bit
 LEAN_EXPORT lean_obj_res lean_pq_paramtype(b_lean_obj_arg res, b_lean_obj_arg param_num) {
   Result *result = pq_result_get_handle(res);
   int param_num_int = lean_unbox(param_num);
   Oid param_type = PQparamtype(result->pg_result, param_num_int);
-  lean_object * param_type_obj = lean_box_usize((size_t)param_type);
+  lean_object * param_type_obj = lean_box_uint32((uint32_t)param_type);
   return lean_io_result_mk_ok(param_type_obj);
 }
 
@@ -664,6 +696,7 @@ LEAN_EXPORT lean_obj_res lean_pq_escape_string_conn(b_lean_obj_arg conn, b_lean_
   }
   int error = 0;
   size_t escaped_length = PQescapeStringConn(connection->pg_conn, to, from_cstr, from_length, &error);
+  (void)escaped_length;
   if (error != 0) {
     free(to);
     return lean_io_result_mk_error(pq_other_error("PQescapeStringConn failed"));
@@ -693,7 +726,6 @@ LEAN_EXPORT lean_obj_res lean_pq_escape_bytea_conn(b_lean_obj_arg conn, b_lean_o
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQUNESCAPEBYTEA
 LEAN_EXPORT lean_obj_res lean_pq_unescape_bytea(b_lean_obj_arg str) {
   const char * str_cstr = lean_string_cstr(str);
-  size_t str_length = strlen(str_cstr);
   size_t to_length = 0;
   unsigned char * unescaped = PQunescapeBytea((const unsigned char *)str_cstr, &to_length);
   if (unescaped == NULL) {

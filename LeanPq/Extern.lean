@@ -7,6 +7,9 @@ namespace LeanPq
 
 opaque Handle : Type := Unit
 
+/-- PostgreSQL Object Identifier — always 32-bit regardless of platform. -/
+abbrev Oid := UInt32
+
 namespace Extern
 
 /-- Makes a new connection to the database server using parameter arrays.
@@ -200,12 +203,12 @@ opaque PqExec (conn : Handle) (command : String): EIO LeanPq.Error PGresult
 /-- Submits a command to the server and waits for the result, with the ability to pass parameters separately.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXECPARAMS -/
 @[extern "lean_pq_exec_params"]
-opaque PqExecParams (conn : Handle) (command : String) (nParams : Int) (paramTypes : Array USize) (paramValues : Array String) (paramLengths : Array Int) (paramFormats : Array Int) (resultFormat : Int): EIO LeanPq.Error PGresult
+opaque PqExecParams (conn : Handle) (command : String) (nParams : Int) (paramTypes : Array Oid) (paramValues : Array String) (paramLengths : Array Int) (paramFormats : Array Int) (resultFormat : Int): EIO LeanPq.Error PGresult
 
 /-- Submits a request to create a prepared statement with the given parameters.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQPREPARE -/
 @[extern "lean_pq_prepare"]
-opaque PqPrepare (conn : Handle) (stmtName : String) (query : String) (nParams : Int) (paramTypes : Array USize): EIO LeanPq.Error PGresult
+opaque PqPrepare (conn : Handle) (stmtName : String) (query : String) (nParams : Int) (paramTypes : Array Oid): EIO LeanPq.Error PGresult
 
 /-- Sends a request to execute a prepared statement with given parameters.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQEXECPREPARED -/
@@ -265,7 +268,7 @@ opaque PqResultStatus (result : PGresult): EIO LeanPq.Error ExecStatus
 /-- Converts the enumerated type returned by PQresultStatus into a string constant.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQRESSTATUS -/
 @[extern "lean_pq_res_status"]
-opaque PqResStatus (result : PGresult): EIO LeanPq.Error ExecStatus
+opaque PqResStatus (result : PGresult): EIO LeanPq.Error String
 
 /-- Returns the error message associated with the command.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQRESULTERRORMESSAGE -/
@@ -301,7 +304,7 @@ opaque PqFnumber (result : PGresult) (fieldName : String): EIO LeanPq.Error Int
 /-- Returns the OID of the table from which the given column was fetched.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTABLE -/
 @[extern "lean_pq_ftable"]
-opaque PqFtable (result : PGresult) (fieldNum : Int): EIO LeanPq.Error USize
+opaque PqFtable (result : PGresult) (fieldNum : Int): EIO LeanPq.Error Oid
 
 /-- Returns the column number (within its table) of the column making up the specified query result column.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTABLECOL -/
@@ -316,7 +319,7 @@ opaque PqFformat (result : PGresult) (fieldNum : Int): EIO LeanPq.Error Int
 /-- Returns the data type associated with the given column number.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFTYPE -/
 @[extern "lean_pq_ftype"]
-opaque PqFtype (result : PGresult) (fieldNum : Int): EIO LeanPq.Error USize
+opaque PqFtype (result : PGresult) (fieldNum : Int): EIO LeanPq.Error Oid
 
 /-- Returns the size in bytes of the type associated with the given column number.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQFSIZE -/
@@ -347,7 +350,7 @@ opaque PqCmdTuples (result : PGresult): EIO LeanPq.Error String
 /-- Returns the OID of the inserted row, if the SQL command was an INSERT that inserted exactly one row into a table that has OIDs.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQOIDVALUE -/
 @[extern "lean_pq_oid_value"]
-opaque PqOidValue (result : PGresult): EIO LeanPq.Error USize
+opaque PqOidValue (result : PGresult): EIO LeanPq.Error Oid
 
 /-- Returns a string with the OID of the inserted row, if the SQL command was an INSERT that inserted exactly one row into a table that has OIDs.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQOIDSTATUS -/
@@ -378,7 +381,7 @@ opaque PqNparams (result : PGresult): EIO LeanPq.Error Int
 /-- Returns the data type of the indicated statement parameter.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQPARAMTYPE -/
 @[extern "lean_pq_paramtype"]
-opaque PqParamtype (result : PGresult) (paramNum : Int): EIO LeanPq.Error USize
+opaque PqParamtype (result : PGresult) (paramNum : Int): EIO LeanPq.Error Oid
 
 -- Escaping Strings for Inclusion in SQL Commands
 /-- Escapes a string for use as an SQL string literal on the given connection.
