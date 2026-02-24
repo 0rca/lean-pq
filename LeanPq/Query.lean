@@ -276,6 +276,16 @@ def render : Query → (String × Array String)
     let ie := if ifExists then "IF EXISTS " else ""
     (s!"DROP TABLE {ie}{name}", #[])
 
+/-- Set ORDER BY on a SELECT query. No-op on other query types. -/
+def withOrderBy (ob : List (String × SortDir)) : Query → Query
+  | .select t c w _ l => .select t c w ob l
+  | q => q
+
+/-- Set LIMIT on a SELECT query. No-op on other query types. -/
+def withLimit (n : Nat) : Query → Query
+  | .select t c w ob _ => .select t c w ob (some n)
+  | q => q
+
 end Query
 
 namespace PqM
@@ -293,6 +303,13 @@ def execQuery (q : Query) (_h : q.permissionLevel.le perm = true := by decide)
     let paramLengths : Array Int := params.map (fun _ => 0)
     let paramFormats : Array Int := params.map (fun _ => 0)
     Extern.PqExecParams conn sql (Int.ofNat params.size) paramTypes params paramLengths paramFormats 0
+
+/-- Execute a type-safe query and fetch all rows.
+    Combines `execQuery` with `fetchAll` for convenience. -/
+def query (q : Query) (h : q.permissionLevel.le perm = true := by decide)
+    : PqM perm (List (List String)) := do
+  let res ← PqM.execQuery q h
+  PqM.fetchAll res
 
 end PqM
 end LeanPq

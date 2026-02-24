@@ -265,7 +265,8 @@ def testQueryAPI : IO Unit :=
           { name := "score", type := .integer, nullable := true }
         ] }
 
-    -- Create table via Query API
+    -- Create table via Query API (drop first for idempotency)
+    let _ ← PqM.execQuery (Query.dropTable "test_query_api" true)
     let _ ← PqM.execQuery (Query.createTable schema)
 
     -- Insert via Query API
@@ -387,6 +388,91 @@ def testBothConcurrent : IO Unit :=
     if rb != [["right"]] then
       throw (LeanPq.Error.otherError s!"both right: expected [[\"right\"]], got {rb}")
 
+/-! ## 16. pq! macro CRUD lifecycle -/
+
+open LeanPq.Syntax in
+def testSyntaxAPI : IO Unit :=
+  PqM.withConnectionIO (perm := .admin) conninfo do
+    let schema : TableSchema :=
+      { name := "test_pq_syntax"
+        columns := [
+          { name := "id", type := .serial, nullable := false },
+          { name := "name", type := .text, nullable := false },
+          { name := "score", type := .integer, nullable := true }
+        ] }
+
+    -- Create (drop first for idempotency)
+    let _ ← PqM.execQuery (pq! drop_if_exists schema)
+    let _ ← PqM.execQuery (pq! create schema)
+
+    -- Insert
+    let _ ← PqM.execQuery (pq! insert schema [name, score] ["Alice", 90])
+    let _ ← PqM.execQuery (pq! insert schema [name, score] ["Bob", 85])
+    let _ ← PqM.execQuery (pq! insert schema [name, score] ["Grace", 95])
+
+    -- Select with WHERE
+    let rows ← PqM.query (pq! select schema | score > 88)
+    if rows.length != 2 then
+      throw (LeanPq.Error.otherError s!"pq! select where: expected 2 rows, got {rows.length}")
+
+    -- Select with ORDER BY + LIMIT
+    let rows2 ← PqM.query (pq! select schema [name] orderby score desc limit 1)
+    if rows2.length != 1 then
+      throw (LeanPq.Error.otherError s!"pq! select order+limit: expected 1 row, got {rows2.length}")
+    if rows2 != [["Grace"]] then
+      throw (LeanPq.Error.otherError s!"pq! select order+limit: expected [[\"Grace\"]], got {rows2}")
+
+    -- Update with WHERE
+    let _ ← PqM.execQuery (pq! update schema [score := 100] | name = "Alice")
+    let rows3 ← PqM.query (pq! select schema [name, score] | name = "Alice")
+    if rows3 != [["Alice", "100"]] then
+      throw (LeanPq.Error.otherError s!"pq! update where: expected [[\"Alice\", \"100\"]], got {rows3}")
+
+    -- Delete with WHERE
+    let _ ← PqM.execQuery (pq! delete schema | name = "Bob")
+    let rows4 ← PqM.query (pq! select schema)
+    if rows4.length != 2 then
+      throw (LeanPq.Error.otherError s!"pq! delete where: expected 2 rows, got {rows4.length}")
+
+    -- Drop
+    let _ ← PqM.execQuery (pq! drop_if_exists schema)
+
+/-! ## Auto-start PostgreSQL via Docker (skipped in CI) -/
+
+/-- Check if PostgreSQL is reachable via pg_isready -/
+def pgIsReady : IO Bool := do
+  try
+    let result ← IO.Process.output {
+      cmd := "pg_isready"
+      args := #["-h", "localhost", "-p", "5432", "-U", "postgres"]
+    }
+    return result.exitCode == 0
+  catch _ => return false
+
+/-- Ensure PostgreSQL is running; auto-start Docker container if not in CI -/
+def ensurePostgres : IO Unit := do
+  if ← pgIsReady then return
+  -- Skip auto-start in CI environments
+  if (← IO.getEnv "CI").isSome then
+    IO.eprintln "PostgreSQL is not reachable and CI is set — skipping auto-start"
+    return
+  IO.println "PostgreSQL not reachable, starting via docker compose..."
+  let _ ← IO.Process.run {
+    cmd := "docker"
+    args := #["compose", "-f", "Tests/docker-compose.yml", "up", "-d", "--wait"]
+  }
+  -- Poll until PG is ready (up to 30s)
+  let mut ready := false
+  for _ in [:30] do
+    if ← pgIsReady then
+      ready := true
+      break
+    IO.sleep 1000
+  if ready then
+    IO.println "PostgreSQL is ready."
+  else
+    throw <| IO.Error.otherError 1 "PostgreSQL did not become ready within 30 seconds"
+
 /-! ## Test runner -/
 
 structure TestResult where
@@ -405,6 +491,7 @@ def runEIOTest (name : String) (test : EIO LeanPq.Error Unit) : IO TestResult :=
   runTest name (test.toIO (fun e => IO.Error.otherError 0 (toString e)))
 
 def main : IO UInt32 := do
+  ensurePostgres
   IO.println "=== lean-pq Test Suite ==="
   IO.println ""
 
@@ -423,7 +510,8 @@ def main : IO UInt32 := do
     runEIOTest "Data types"        testDataTypes,
     runTest    "Concurrent queries" testConcurrentQueries,
     runTest    "Spawn and await"   testSpawnAndAwait,
-    runTest    "Both concurrent"   testBothConcurrent
+    runTest    "Both concurrent"   testBothConcurrent,
+    runTest    "pq! syntax API"    testSyntaxAPI
   ]
 
   let mut passed := 0

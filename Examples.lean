@@ -8,97 +8,103 @@ open LeanPq.Syntax
 def IO.toLeanPqEIO (action : IO α) : EIO LeanPq.Error α :=
   action.toEIO (fun e => LeanPq.Error.otherError (toString e))
 
--- Example 1: Low-level API (PqExec)
-def exampleLowLevel : EIO LeanPq.Error Unit := do
-  let conninfo := "host=localhost port=5432 dbname=postgres user=postgres password=test"
-  let conn ← PqConnectDb conninfo
-  let connStatus ← PqStatus conn
-  IO.toLeanPqEIO (IO.println s!"connection status: {connStatus}")
-  let result ← PqExec conn "SELECT 1 AS num, 'hello' AS greeting;"
-  let resStatus ← PqResultStatus result
-  IO.toLeanPqEIO (IO.println s!"Result status: {resStatus}")
-
-  let nrows ← PqNtuples result
-  let ncols ← PqNfields result
-  IO.toLeanPqEIO (IO.println s!"Rows: {nrows}, Cols: {ncols}")
-
-  for row in [0:nrows.toNat] do
-    for col in [0:ncols.toNat] do
-      let value ← PqGetvalue result (Int.ofNat row) (Int.ofNat col)
-      let fname ← PqFname result (Int.ofNat col)
-      IO.toLeanPqEIO (IO.println s!"  {fname} = {value}")
-
--- Example 2: PqM monad with permission tracking
-def exampleMonad : IO Unit :=
-  PqM.withConnectionIO "host=localhost port=5432 dbname=postgres user=postgres password=test" do
-    -- This is a PqM .admin context (highest permission)
-    let _ ← PqM.execAdmin "DROP TABLE IF EXISTS example_users;"
-    let _ ← PqM.execAdmin "CREATE TABLE example_users (id serial PRIMARY KEY, name text, email text);"
-
-    -- Data-modifying operations lift into admin context
-    let _ ← PqM.execModify "INSERT INTO example_users (name, email) VALUES ('Alice', 'alice@example.com');"
-    let _ ← PqM.execModify "INSERT INTO example_users (name, email) VALUES ('Bob', 'bob@example.com');"
-
-    -- Read-only operations also lift into admin context
-    let result ← PqM.execSelect "SELECT * FROM example_users;"
-    let rows ← PqM.fetchAll result
-    PqM.liftIO (IO.println s!"Users: {rows}")
-
-    -- Cleanup
-    let _ ← PqM.execAdmin "DROP TABLE example_users;"
-    pure ()
-
--- Example 3: Type-safe queries with schema verification
-def exampleTypeSafe : IO Unit := do
-  -- Define a schema (compile-time)
+-- Example 1: pq! macro — the primary query-building interface
+def examplePqMacro : IO Unit := do
+  -- Define a schema (compile-time verified)
   let products : TableSchema :=
     { name := "example_products"
       columns := [
         { name := "id", type := .serial, nullable := false },
         { name := "name", type := .text, nullable := false },
-        { name := "price", type := .numeric (some 10) (some 2), nullable := false }
+        { name := "price", type := .numeric (some 10) (some 2), nullable := false },
+        { name := "in_stock", type := .boolean, nullable := false }
       ] }
 
-  -- Render queries — all string values become $N parameters
-  let (createSql, _) := (Query.createTable products).render
-  IO.println s!"CREATE: {createSql}"
+  IO.println "-- pq! macro renders SQL with parameterized values --"
 
-  let insertQ := Query.insert products ["name", "price"] [.litStr "Widget", .litStr "9.99"]
-  let (insertSql, insertParams) := insertQ.render
-  IO.println s!"INSERT: {insertSql}"
-  IO.println s!"  params: {insertParams}"
+  -- SELECT all
+  let (sql, params) := (pq! select products).render
+  IO.println s!"  {sql}  params={params}"
 
-  let selectQ := Query.select products .all
-    (some (.binOp .gt (.col "price" (by decide)) (.litStr "5.00")))
-  let (selectSql, selectParams) := selectQ.render
-  IO.println s!"SELECT: {selectSql}"
-  IO.println s!"  params: {selectParams}"
+  -- SELECT specific columns with WHERE
+  let (sql, params) := (pq! select products [name, price] | price > "5.00").render
+  IO.println s!"  {sql}  params={params}"
 
-  let deleteQ := Query.delete products
-    (some (.binOp .eq (.col "name" (by decide)) (.litStr "Widget")))
-  let (deleteSql, deleteParams) := deleteQ.render
-  IO.println s!"DELETE: {deleteSql}"
-  IO.println s!"  params: {deleteParams}"
+  -- SELECT with ORDER BY and LIMIT
+  let (sql, params) := (pq! select products | in_stock = true orderby price desc limit 5).render
+  IO.println s!"  {sql}  params={params}"
 
-  -- Syntax macro examples
-  let macroQ := pq_select_all! products
-  let (macroSql, macroParams) := macroQ.render
-  IO.println s!"pq_select_all!: {macroSql}"
-  IO.println s!"  params: {macroParams}"
+  -- INSERT
+  let (sql, params) := (pq! insert products [name, price, in_stock] ["Widget", "9.99", true]).render
+  IO.println s!"  {sql}  params={params}"
 
-  let macroQ2 := pq_select! products [name, price]
-  let (macroSql2, macroParams2) := macroQ2.render
-  IO.println s!"pq_select! [name, price]: {macroSql2}"
-  IO.println s!"  params: {macroParams2}"
+  -- UPDATE with WHERE
+  let (sql, params) := (pq! update products [price := "12.99"] | name = "Widget").render
+  IO.println s!"  {sql}  params={params}"
+
+  -- DELETE with WHERE
+  let (sql, params) := (pq! delete products | name = "Widget").render
+  IO.println s!"  {sql}  params={params}"
+
+  -- DDL
+  let (sql, _) := (pq! create products).render
+  IO.println s!"  {sql}"
+  let (sql, _) := (pq! drop_if_exists products).render
+  IO.println s!"  {sql}"
+
+-- Example 2: pq! with PqM monad — full CRUD against a real database
+def examplePqMacroLive : IO Unit :=
+  PqM.withConnectionIO (perm := .admin) "host=localhost port=5432 dbname=postgres user=postgres password=test" do
+    let schema : TableSchema :=
+      { name := "example_pq_macro"
+        columns := [
+          { name := "id", type := .serial, nullable := false },
+          { name := "name", type := .text, nullable := false },
+          { name := "email", type := .text, nullable := false }
+        ] }
+
+    let _ ← PqM.execQuery (pq! drop_if_exists schema)
+    let _ ← PqM.execQuery (pq! create schema)
+    let _ ← PqM.execQuery (pq! insert schema [name, email] ["Alice", "alice@example.com"])
+    let _ ← PqM.execQuery (pq! insert schema [name, email] ["Bob", "bob@example.com"])
+
+    let rows ← PqM.query (pq! select schema)
+    PqM.liftIO (IO.println s!"  All users: {rows}")
+
+    let rows ← PqM.query (pq! select schema [name] | name = "Alice")
+    PqM.liftIO (IO.println s!"  Alice: {rows}")
+
+    let _ ← PqM.execQuery (pq! update schema [email := "bob2@example.com"] | name = "Bob")
+    let rows ← PqM.query (pq! select schema | name = "Bob")
+    PqM.liftIO (IO.println s!"  Bob updated: {rows}")
+
+    let _ ← PqM.execQuery (pq! delete schema | name = "Bob")
+    let rows ← PqM.query (pq! select schema)
+    PqM.liftIO (IO.println s!"  After delete: {rows}")
+
+    let _ ← PqM.execQuery (pq! drop_if_exists schema)
+
+-- Example 3: Raw SQL escape hatch — for complex queries not covered by pq!
+def exampleRawSQL : IO Unit :=
+  PqM.withConnectionIO "host=localhost port=5432 dbname=postgres user=postgres password=test" do
+    let _ ← PqM.execAdmin "DROP TABLE IF EXISTS example_raw;"
+    let _ ← PqM.execAdmin "CREATE TABLE example_raw (id serial PRIMARY KEY, name text, score int);"
+    let _ ← PqM.execModify "INSERT INTO example_raw (name, score) VALUES ('Alice', 100), ('Bob', 85);"
+
+    let result ← PqM.execSelect "SELECT name, score FROM example_raw ORDER BY score DESC;"
+    let rows ← PqM.fetchAll result
+    PqM.liftIO (IO.println s!"  Raw SQL result: {rows}")
+
+    let _ ← PqM.execAdmin "DROP TABLE example_raw;"
 
 def main : IO Unit := do
-  IO.println "=== Example 3: Type-safe query rendering ==="
-  exampleTypeSafe
+  IO.println "=== Example 1: pq! macro (compile-time only) ==="
+  examplePqMacro
 
-  IO.println "\n=== Example 1: Low-level API ==="
-  let _ ← exampleLowLevel.toIO (fun e => IO.Error.otherError 0 (toString e))
+  IO.println "\n=== Example 2: pq! macro with live database ==="
+  examplePqMacroLive
 
-  IO.println "\n=== Example 2: PqM monad ==="
-  exampleMonad
+  IO.println "\n=== Example 3: Raw SQL escape hatch ==="
+  exampleRawSQL
 
   IO.println "\nAll examples done."
