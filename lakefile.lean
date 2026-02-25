@@ -5,8 +5,17 @@ open System Lake DSL
 -- fall back to ldconfig, then plain -lpq
 def linkArgsLinux : IO (Array String) := do
   try
-    let output ← IO.Process.run { cmd := "pkg-config", args := #["--libs", "libpq"] }
-    if !output.trimAscii.toString.isEmpty then return output.trimAscii.toString.splitOn.toArray.filter (· ≠ "")
+    let libs ← IO.Process.run { cmd := "pkg-config", args := #["--libs", "libpq"] }
+    let libsStr := libs.trimAscii.toString
+    if !libsStr.isEmpty then
+      let libsArr := libsStr.splitOn.toArray.filter (· ≠ "")
+      -- ld.lld (used by Lean's bundled clang) may not search system library paths,
+      -- so explicitly add -L<libdir> when pkg-config omits it
+      if !libsArr.any (·.startsWith "-L") then
+        let libdir ← IO.Process.run { cmd := "pkg-config", args := #["--variable=libdir", "libpq"] }
+        let libdirStr := libdir.trimAscii.toString
+        if !libdirStr.isEmpty then return #[s!"-L{libdirStr}"] ++ libsArr
+      return libsArr
   catch _ => pure ()
   try
     let p ← IO.Process.run { cmd := "/bin/sh", args := #["-c", "ldconfig -p | grep -m 1 libpq | awk '{ print $4 }'"]}
