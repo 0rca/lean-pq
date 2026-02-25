@@ -14,14 +14,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install system deps (Ubuntu)
+      - name: Install libpq (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev clang
-      - name: Use system clang (Ubuntu)
-        if: runner.os == 'Linux'
-        run: echo "LEAN_CC=clang" >> $GITHUB_ENV
+          sudo apt-get install -y libpq-dev
       - name: Install libpq (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -49,12 +46,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install system deps
+      - name: Install libpq
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev clang
-      - name: Use system clang
-        run: echo "LEAN_CC=clang" >> $GITHUB_ENV
+          sudo apt-get install -y libpq-dev
+      - name: Configure system clang for linking
+        run: |
+          TOOLCHAIN=$(sed 's|/|--|g; s|:|---|g' lean-toolchain)
+          echo "LEAN_CC=clang" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$HOME/.elan/toolchains/$TOOLCHAIN/lib:${LIBRARY_PATH:-}" >> $GITHUB_ENV
       - name: Seed test database
         run: PGPASSWORD=test psql -h localhost -U postgres -f Tests/init.sql
       - uses: leanprover/lean-action@v1
