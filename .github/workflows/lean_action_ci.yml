@@ -9,7 +9,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -19,9 +19,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev
-      - name: Use system compiler (Ubuntu)
-        if: runner.os == 'Linux'
-        run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
       - name: Install libpq (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -32,7 +29,7 @@ jobs:
           test: false
 
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     services:
       postgres:
@@ -53,8 +50,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev
-      - name: Use system compiler
-        run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
       - name: Seed test database
         run: PGPASSWORD=test psql -h localhost -U postgres -f Tests/init.sql
       - uses: leanprover/lean-action@v1
