@@ -18,10 +18,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev libuv1-dev libc++-dev libc++abi-dev
-      - name: Use system compiler (Ubuntu)
+          sudo apt-get install -y libpq-dev clang
+      - name: Use system clang (Ubuntu)
         if: runner.os == 'Linux'
-        run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
+        run: echo "LEAN_CC=clang" >> $GITHUB_ENV
       - name: Install libpq (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -52,9 +52,9 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev libuv1-dev libc++-dev libc++abi-dev
-      - name: Use system compiler
-        run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
+          sudo apt-get install -y libpq-dev clang
+      - name: Use system clang
+        run: echo "LEAN_CC=clang" >> $GITHUB_ENV
       - name: Seed test database
         run: PGPASSWORD=test psql -h localhost -U postgres -f Tests/init.sql
       - uses: leanprover/lean-action@v1
