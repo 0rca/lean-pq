@@ -18,7 +18,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev libuv1-dev libc++abi-dev
+          sudo apt-get install -y libpq-dev libuv1-dev libc++-dev libc++abi-dev
       - name: Use system compiler (Ubuntu)
         if: runner.os == 'Linux'
         run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
@@ -52,7 +52,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev libuv1-dev libc++abi-dev
+          sudo apt-get install -y libpq-dev libuv1-dev libc++-dev libc++abi-dev
       - name: Use system compiler
         run: echo "LEAN_CC=gcc" >> $GITHUB_ENV
       - name: Seed test database
