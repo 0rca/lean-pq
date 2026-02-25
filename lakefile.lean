@@ -6,7 +6,7 @@ open System Lake DSL
 def linkArgsLinux : IO (Array String) := do
   try
     let output ← IO.Process.run { cmd := "pkg-config", args := #["--libs", "libpq"] }
-    if !output.trimAscii.toString.isEmpty then return output.trimAscii.toString.splitOn.toArray
+    if !output.trimAscii.toString.isEmpty then return output.trimAscii.toString.splitOn.toArray.filter (· ≠ "")
   catch _ => pure ()
   try
     let p ← IO.Process.run { cmd := "/bin/sh", args := #["-c", "ldconfig -p | grep -m 1 libpq | awk '{ print $4 }'"]}
@@ -19,7 +19,7 @@ def linkArgsDarwin : IO (Array String) := do
     cmd := "pkg-config"
     args := #["--libs", "libpq"]
   }
-  return output.dropEnd 1 |>.toString |>.splitOn.toArray
+  return output.trimAscii.toString.splitOn.toArray.filter (· ≠ "")
 
 def linkArgs : Array String := run_io do
   if System.Platform.isOSX then
@@ -54,7 +54,7 @@ def traceArgs : FetchM (Array String) := do
     args := #["--cflags", "libpq"]
   }
   logInfo s!"traceArgs: {output}"
-  return (output.dropEnd 1 |>.toString |>.splitOn.toArray)
+  return (output.trimAscii.toString.splitOn.toArray.filter (· ≠ ""))
 
 target extern_o pkg : FilePath := do
   let LeanPq_extern_c := pkg.dir / "LeanPq" / "extern.c"

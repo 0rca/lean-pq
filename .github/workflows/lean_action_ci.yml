@@ -21,8 +21,12 @@ jobs:
           sudo apt-get install -y libpq-dev
       - name: Install libpq (macOS)
         if: runner.os == 'macOS'
-        run: brew install libpq
+        run: |
+          brew install libpq
+          echo "PKG_CONFIG_PATH=$(brew --prefix libpq)/lib/pkgconfig" >> $GITHUB_ENV
       - uses: leanprover/lean-action@v1
+        with:
+          test: false
 
   test:
     runs-on: ubuntu-latest
