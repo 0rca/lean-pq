@@ -612,6 +612,31 @@ LEAN_EXPORT lean_obj_res lean_pq_getvalue(b_lean_obj_arg res, b_lean_obj_arg row
   return lean_io_result_mk_ok(lean_mk_string(value));
 }
 
+// PQgetvalue (binary) - Returns raw bytes of a field value
+// For use with resultFormat=1 (binary). Returns ByteArray instead of String.
+LEAN_EXPORT lean_obj_res lean_pq_getvalue_bytes(
+    b_lean_obj_arg res,
+    b_lean_obj_arg row_num,
+    b_lean_obj_arg field_num)
+{
+  Result *result = pq_result_get_handle(res);
+  int row_num_int = lean_unbox(row_num);
+  int field_num_int = lean_unbox(field_num);
+
+  if (PQgetisnull(result->pg_result, row_num_int, field_num_int)) {
+    lean_object *bytes = lean_alloc_sarray(1, 0, 0);
+    return lean_io_result_mk_ok(bytes);
+  }
+
+  const char *value = PQgetvalue(result->pg_result, row_num_int, field_num_int);
+  int length = PQgetlength(result->pg_result, row_num_int, field_num_int);
+
+  lean_object *bytes = lean_alloc_sarray(1, (size_t)length, (size_t)length);
+  memcpy(lean_sarray_cptr(bytes), value, (size_t)length);
+
+  return lean_io_result_mk_ok(bytes);
+}
+
 // PQgetisnull - Tests a field for a null value
 // Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQGETISNULL
 LEAN_EXPORT lean_obj_res lean_pq_getisnull(b_lean_obj_arg res, b_lean_obj_arg row_num, b_lean_obj_arg field_num) {

@@ -363,6 +363,12 @@ Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQG
 @[extern "lean_pq_getvalue"]
 opaque PqGetvalue (result : PGresult) (rowNum : Int) (fieldNum : Int): EIO LeanPq.Error String
 
+/-- Returns a single field value as raw bytes. Use with binary format (resultFormat = 1).
+    For text format results, prefer PqGetvalue which returns String.
+Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQGETVALUE -/
+@[extern "lean_pq_getvalue_bytes"]
+opaque PqGetvalueBytes (result : PGresult) (rowNum : Int) (fieldNum : Int): EIO LeanPq.Error ByteArray
+
 /-- Tests a field for a null value.
 Documentation: https://www.postgresql.org/docs/current/libpq-exec.html#LIBPQ-PQGETISNULL -/
 @[extern "lean_pq_getisnull"]

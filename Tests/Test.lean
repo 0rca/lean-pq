@@ -437,6 +437,76 @@ def testSyntaxAPI : IO Unit :=
     -- Drop
     let _ ← PqM.execQuery (pq! drop_if_exists schema)
 
+/-! ## 17. Binary format retrieval (PqGetvalueBytes) -/
+
+def testBinaryGetvalue : IO Unit :=
+  PqM.withConnectionIO (perm := .admin) conninfo do
+    -- Setup
+    let _ ← PqM.execAdmin "DROP TABLE IF EXISTS test_binary;"
+    let _ ← PqM.execAdmin "CREATE TABLE test_binary (i int4, t text, b bytea, u uuid)"
+    let _ ← PqM.execParamsModify
+      "INSERT INTO test_binary VALUES ($1, $2, $3, $4)"
+      #[0, 0, 0, 0]
+      #["42", "hello", "\\x deadbeef", "550e8400-e29b-41d4-a716-446655440000"]
+
+    -- Fetch in binary format
+    let result ← PqM.execParamsSelectBinary
+      "SELECT i, t, b, u FROM test_binary"
+      #[] #[]
+    let rows ← PqM.fetchAllBytes result
+
+    if h : rows.size = 1 then
+      let row := rows[0]
+      if h2 : row.size = 4 then
+        -- int4 binary: 4 bytes, big-endian. 42 = 0x0000002A
+        match row[0] with
+        | some intBytes =>
+          assertEq "int4 size" intBytes.size 4
+          assertEq "int4 bytes" intBytes (ByteArray.mk #[0, 0, 0, 42])
+        | none => throw (LeanPq.Error.otherError "int4 field was unexpectedly NULL")
+
+        -- text binary: raw UTF-8 bytes (no null terminator)
+        match row[1] with
+        | some textBytes =>
+          assertEq "text bytes" textBytes "hello".toUTF8
+        | none => throw (LeanPq.Error.otherError "text field was unexpectedly NULL")
+
+        -- bytea binary: raw bytes
+        match row[2] with
+        | some byteaBytes =>
+          assertEq "bytea bytes" byteaBytes (ByteArray.mk #[0xDE, 0xAD, 0xBE, 0xEF])
+        | none => throw (LeanPq.Error.otherError "bytea field was unexpectedly NULL")
+
+        -- uuid binary: 16 raw bytes
+        match row[3] with
+        | some uuidBytes =>
+          assertEq "uuid size" uuidBytes.size 16
+        | none => throw (LeanPq.Error.otherError "uuid field was unexpectedly NULL")
+      else
+        throw (LeanPq.Error.otherError s!"Expected 4 columns, got {row.size}")
+    else
+      throw (LeanPq.Error.otherError s!"Expected 1 row, got {rows.size}")
+
+    -- Test NULL handling in binary mode
+    let _ ← PqM.execModify "INSERT INTO test_binary (i) VALUES (NULL)"
+    let result2 ← PqM.execParamsSelectBinary
+      "SELECT i FROM test_binary WHERE i IS NULL"
+      #[] #[]
+    let rows2 ← PqM.fetchAllBytes result2
+    if h : rows2.size = 1 then
+      let row := rows2[0]
+      if h2 : row.size = 1 then
+        match row[0] with
+        | none => pure ()  -- expected: NULL field is none
+        | some _ => throw (LeanPq.Error.otherError "NULL field was unexpectedly some")
+      else
+        throw (LeanPq.Error.otherError s!"Expected 1 column, got {row.size}")
+    else
+      throw (LeanPq.Error.otherError s!"Expected 1 row for NULL test, got {rows2.size}")
+
+    -- Cleanup
+    let _ ← PqM.execAdmin "DROP TABLE test_binary;"
+
 /-! ## Auto-start PostgreSQL via Docker (skipped in CI) -/
 
 /-- Check if PostgreSQL is reachable via pg_isready -/
@@ -511,7 +581,8 @@ def main : IO UInt32 := do
     runTest    "Concurrent queries" testConcurrentQueries,
     runTest    "Spawn and await"   testSpawnAndAwait,
     runTest    "Both concurrent"   testBothConcurrent,
-    runTest    "pq! syntax API"    testSyntaxAPI
+    runTest    "pq! syntax API"    testSyntaxAPI,
+    runTest    "Binary getvalue"   testBinaryGetvalue
   ]
 
   let mut passed := 0
