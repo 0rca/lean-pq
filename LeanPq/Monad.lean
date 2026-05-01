@@ -117,23 +117,23 @@ def execParamsSelect (sql : String) (paramTypes : Array Oid) (paramValues : Arra
   ⟨fun conn => Extern.PqExecParams conn sql (Int.ofNat paramValues.size)
     paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 0⟩
 
+/-- Execute a parameterized query requesting binary format results (read-only). -/
+def execParamsSelectBinary (sql : String) (paramTypes : Array Oid) (paramValues : Array String)
+    : PqM .readOnly Extern.PGresult :=
+  ⟨fun conn => Extern.PqExecParams conn sql (Int.ofNat paramValues.size)
+    paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 1 /- binary format -/⟩
+
 /-- Execute a parameterized query (data-modifying). -/
 def execParamsModify (sql : String) (paramTypes : Array Oid) (paramValues : Array String)
     : PqM .dataAltering Extern.PGresult :=
   ⟨fun conn => Extern.PqExecParams conn sql (Int.ofNat paramValues.size)
     paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 0⟩
 
-/-- Execute a parameterized query requesting binary format results (read-only). -/
-def execParamsSelectBinary (sql : String) (paramTypes : Array Oid) (paramValues : Array String)
-    : PqM .readOnly Extern.PGresult :=
-  ⟨fun conn => Extern.PqExecParams conn sql (Int.ofNat paramValues.size)
-    paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 1⟩
-
 /-- Execute a parameterized query requesting binary format results (data-modifying). -/
 def execParamsModifyBinary (sql : String) (paramTypes : Array Oid) (paramValues : Array String)
     : PqM .dataAltering Extern.PGresult :=
   ⟨fun conn => Extern.PqExecParams conn sql (Int.ofNat paramValues.size)
-    paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 1⟩
+    paramTypes paramValues (paramValues.map (fun _ => 0)) (paramValues.map (fun _ => 0)) 1 /- binary format -/⟩
 
 /-- Run a computation inside a transaction. -/
 def withTransaction (body : PqM perm α) : PqM perm α := ⟨fun conn => do
@@ -159,25 +159,20 @@ def fetchAll (result : Extern.PGresult) : PqM perm (List (List String)) := ⟨fu
     rows := rows ++ [cols]
   Pure.pure rows⟩
 
-/-- Fetch all results as raw byte arrays. For use with binary format queries.
-    Each row is an array of (isNull, bytes) pairs. -/
-def fetchAllBytes (result : Extern.PGresult) : PqM perm (Array (Array (Option ByteArray))) := ⟨ fun _ => do
+
+/-- Fetch all results from a PGresult as a list of rows (each row is a list of byte arrays).
+    Use it with binary format queries. -/
+def fetchAllBytes (result : Extern.PGresult) : PqM perm (List (List ByteArray)) := ⟨ fun _ => do
   let nrows ← Extern.PqNtuples result
   let ncols ← Extern.PqNfields result
-  let mut rows := Array.mkEmpty nrows.toNat
-
-  for row in 0 ... nrows do
-    let mut cols := Array.mkEmpty ncols.toNat
-
-    for col in 0 ... ncols do
-      let isNull ← Extern.PqGetisnull result row col
-      if isNull != 0 then
-        cols := cols.push none
-      else
-        let bytes ← Extern.PqGetvalueBytes result row col
-        cols := cols.push (some bytes)
-    rows := rows.push cols
-  return rows⟩
+  let mut rows : List (List ByteArray) := []
+  for row in [0:nrows.toNat] do
+    let mut cols : List ByteArray := []
+    for col in [0:ncols.toNat] do
+      let value ← Extern.PqGetvalueBytes result (Int.ofNat row) (Int.ofNat col)
+      cols := cols ++ [value]
+    rows := rows ++ [cols]
+  Pure.pure rows⟩
 
 /-- Connect and run a PqM computation. -/
 def withConnection (conninfo : String) (body : PqM perm α) : EIO LeanPq.Error α := do
