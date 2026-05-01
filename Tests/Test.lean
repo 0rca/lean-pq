@@ -558,22 +558,22 @@ def main : IO UInt32 := do
   IO.println ""
 
   let tests : List (IO TestResult) := [
-    /- runEIOTest "Connect"           testConnect, -/
-    /- runEIOTest "Connection info"   testConnectionInfo, -/
-    /- runEIOTest "Simple exec"       testExec, -/
-    /- runEIOTest "Exec params"       testExecParams, -/
-    /- runEIOTest "Prepared stmts"    testPrepared, -/
-    /- runEIOTest "NULL handling"     testNulls, -/
-    /- runEIOTest "Escape functions"  testEscape, -/
-    /- runEIOTest "Seeded data"       testSeededData, -/
-    /- runTest    "PqM basic"         testPqMBasic, -/
-    /- runTest    "PqM transactions"  testPqMTransaction, -/
-    /- runTest    "Query API"         testQueryAPI, -/
-    /- runEIOTest "Data types"        testDataTypes, -/
-    /- runTest    "Concurrent queries" testConcurrentQueries, -/
-    /- runTest    "Spawn and await"   testSpawnAndAwait, -/
-    /- runTest    "Both concurrent"   testBothConcurrent, -/
-    /- runTest    "pq! syntax API"    testSyntaxAPI, -/
+    runEIOTest "Connect"           testConnect,
+    runEIOTest "Connection info"   testConnectionInfo,
+    runEIOTest "Simple exec"       testExec,
+    runEIOTest "Exec params"       testExecParams,
+    runEIOTest "Prepared stmts"    testPrepared,
+    runEIOTest "NULL handling"     testNulls,
+    runEIOTest "Escape functions"  testEscape,
+    runEIOTest "Seeded data"       testSeededData,
+    runTest    "PqM basic"         testPqMBasic,
+    runTest    "PqM transactions"  testPqMTransaction,
+    runTest    "Query API"         testQueryAPI,
+    runEIOTest "Data types"        testDataTypes,
+    runTest    "Concurrent queries" testConcurrentQueries,
+    runTest    "Spawn and await"   testSpawnAndAwait,
+    runTest    "Both concurrent"   testBothConcurrent,
+    runTest    "pq! syntax API"    testSyntaxAPI,
     runTest    "Binary getvalue"   testBinaryGetvalue
   ]
 
